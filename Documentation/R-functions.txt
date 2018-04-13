@@ -1,0 +1,307 @@
+### Open an outfile
+open.omegaMap <- function(filename, burnin=0, ...) {
+  ret <- read.table(filename, as.is=T, header=T, na.strings=c("NA","1.#INF","-1.#INF","1.#IND","-1.#IND","1.#QNAN","-1.#QNAN"), ...)
+  good <- ret$iter>=burnin
+  ret <- ret[good,]
+  ret
+}
+
+### trace of a certain parameter
+trace.omegaMap <- function(runs,param,cols=palette(),xlim=NULL,ylim=NULL,...) {
+  nruns <- length(runs)
+  yran <- range(runs[[1]][[param]])
+  xran <- range(runs[[1]][["iter"]])
+  if(nruns>1) for(i in 2:nruns) { 
+      yran <- range(yran,runs[[i]][[param]])
+      xran <- range(xran,runs[[1]][["iter"]])
+  }
+  if(is.null(xlim)) xlim = xran
+  if(is.null(ylim)) ylim = yran
+  plot(-1e6,1,xlim=xlim,ylim=ylim,xlab="Iteration",ylab=eval(substitute(expression(sym),list(sym=as.symbol(param)))),...)
+  for(i in 1:nruns) {
+    lines(runs[[i]][["iter"]],runs[[i]][[param]],col=cols[i])
+  }
+}
+
+### Remove burn-in from a single run
+remove.burnin <- function(run, burnin) {
+  good <- run$iter>=burnin
+  return(run[good,])
+}
+
+# With apologies to Brian J. Smith, the author of the following function
+# which is available as part of the boa package (visit www.r-project.org).
+# Some of the functions in this file make use of boa.hpd().
+boa.hpd <- function (x, alpha) {
+    n <- length(x)
+    m <- max(1, ceiling(alpha * n))
+    y <- sort(x)
+    a <- y[1:m]
+    b <- y[(n - m + 1):n]
+    i <- order(b - a)[1]
+    structure(c(a[i], b[i]), names = c("Lower Bound", "Upper Bound"))
+}
+
+### must use syntax plot.omega.converged(list(a,b)) for correct usage
+plot.omega.converged <- function(runs,log="y",cols=palette(),width=c(1,2,1)) {
+  nruns <- length(runs)
+  for(i in 1:nruns) {
+    if(i==1) {
+      oBeg <- which(names(runs[[i]])=="omega0")
+      oEnd <- which(names(runs[[i]])=="rBlockStart0")-1
+    }
+    else {
+      if(which(names(runs[[i]])=="omega0")!=oBeg) error("Runs don't match in sequence length")
+      if(which(names(runs[[i]])=="rBlockStart0")!=(oEnd+1)) error("Runs don't match in sequence length")
+    }
+  }
+  len <- oEnd-oBeg+1
+  means <- array(dim=c(nruns,len))
+  hpd <- array(dim=c(nruns,2,len))
+  for(i in 1:nruns) {
+    means[i,] <- exp(apply(log(runs[[i]][,oBeg:oEnd]),2,mean))
+    hpd[i,,] <- array(exp(apply(log(runs[[i]][,oBeg:oEnd]),2,boa.hpd,0.05)), dim=c(2,len))
+  }
+  yran <- range(hpd)
+  plot(-1e6,1,xlim=c(1,(oEnd-oBeg+1)),ylim=yran,xlab="Codon position",ylab=expression(omega),log=log)
+  for(i in 1:nruns) {
+    lines(means[i,],col=cols[i],lwd=width[2])
+    lines(hpd[i,1,],col=cols[i],lwd=width[1])
+    lines(hpd[i,2,],col=cols[i],lwd=width[3])
+  }
+}
+
+### must use syntax plot.rho.converged(list(a,b)) for correct usage
+plot.rho.converged <- function(runs,log="y",cols=palette(),width=c(1,2,1)) {
+  nruns <- length(runs)
+  for(i in 1:nruns) {
+    if(i==1) {
+      oBeg <- which(names(runs[[i]])=="rho0")
+      oEnd <- ncol(runs[[i]])
+    }
+    else {
+      if(which(names(runs[[i]])=="rho0")!=oBeg) error("Runs don't match in sequence length")
+      if(ncol(runs[[i]])!=oEnd) error("Runs don't match in sequence length")
+    }
+  }
+  len <- oEnd-oBeg+1
+  means <- array(dim=c(nruns,len))
+  hpd <- array(dim=c(nruns,2,len))
+  for(i in 1:nruns) {
+    means[i,] <- exp(apply(log(runs[[i]][,oBeg:oEnd]),2,mean))
+    hpd[i,,] <- array(exp(apply(log(runs[[i]][,oBeg:oEnd]),2,boa.hpd,0.05)), dim=c(2,len))
+  }
+  yran <- range(hpd)
+  plot(-1e6,1,xlim=c(1,(oEnd-oBeg+1)),ylim=yran,xlab="Codon position",ylab=expression(rho),log=log)
+  for(i in 1:nruns) {
+    lines(means[i,],col=cols[i],lwd=width[2])
+    lines(hpd[i,1,],col=cols[i],lwd=width[1])
+    lines(hpd[i,2,],col=cols[i],lwd=width[3])
+  }
+}
+
+### must use syntax plot.omega(list(a,b)) for correct usage
+plot.omega <- function(runs,log="y",...) {
+  nruns <- length(runs)
+  for(i in 1:nruns) {
+    if(i==1) {
+      oBeg <- which(names(runs[[i]])=="omega0")
+      oEnd <- which(names(runs[[i]])=="rBlockStart0")-1
+    }
+    else {
+      if(which(names(runs[[i]])=="omega0")!=oBeg) error("Runs don't match in sequence length")
+      if(which(names(runs[[i]])=="rBlockStart0")!=(oEnd+1)) error("Runs don't match in sequence length")
+    }
+  }
+  len <- oEnd-oBeg+1
+  mergd <- runs[[1]]
+  if(nruns>1) for(i in 2:nruns) mergd <- rbind(mergd,runs[[i]])
+
+  means <- exp(apply(log(mergd[,oBeg:oEnd]),2,mean))
+  hpd <- array(exp(apply(log(mergd[,oBeg:oEnd]),2,boa.hpd,0.05)), dim=c(2,len))
+  yran <- range(hpd)
+  plot(-1e6,1,xlim=c(1,(oEnd-oBeg+1)),ylim=yran,xlab="Codon position",ylab=expression(omega),log=log,...)
+  polygon(c(1:len,len:1),c(hpd[1,],rev(hpd[2,])),col=8,border=NA)
+  lines(means,col=1)
+}
+
+### must use syntax plot.rho(list(a,b)) for correct usage
+plot.rho <- function(runs,log="y",...) {
+  nruns <- length(runs)
+  for(i in 1:nruns) {
+    if(i==1) {
+      oBeg <- which(names(runs[[i]])=="rho0")
+      oEnd <- ncol(runs[[i]])
+    }
+    else {
+      if(which(names(runs[[i]])=="rho0")!=oBeg) error("Runs don't match in sequence length")
+      if(ncol(runs[[i]])!=oEnd) error("Runs don't match in sequence length")
+    }
+  }
+  len <- oEnd-oBeg+1
+  mergd <- runs[[1]]
+  if(nruns>1) for(i in 2:nruns) mergd <- rbind(mergd,runs[[i]])
+
+  means <- exp(apply(log(mergd[,oBeg:oEnd]),2,mean))
+  hpd <- array(exp(apply(log(mergd[,oBeg:oEnd]),2,boa.hpd,0.05)), dim=c(2,len))
+  yran <- range(hpd)
+  plot(-1e6,1,xlim=c(1,(oEnd-oBeg+1)),ylim=yran,xlab="Codon position",ylab=expression(rho),log=log,...)
+  polygon(c(1:len,len:1),c(hpd[1,],rev(hpd[2,])),col=8,border=NA)
+  lines(means,col=1)
+}
+
+### Plot posterior probability of positive selection
+positively.selected.sites <- function(runs,...) {
+  nruns <- length(runs)
+  for(i in 1:nruns) {
+    if(i==1) {
+      oBeg <- which(names(runs[[i]])=="omega0")
+      oEnd <- which(names(runs[[i]])=="rBlockStart0")-1
+    }
+    else {
+      if(which(names(runs[[i]])=="omega0")!=oBeg) error("Runs don't match in sequence length")
+      if(which(names(runs[[i]])=="rBlockStart0")!=(oEnd+1)) error("Runs don't match in sequence length")
+    }
+  }
+  len <- oEnd-oBeg+1
+  mergd <- runs[[1]]
+  if(nruns>1) for(i in 2:nruns) mergd <- rbind(mergd,runs[[i]])
+  plot(apply(mergd[,oBeg:oEnd]>=1.0,2,mean),type="l",ylim=c(0,1),xlab="Codon position",ylab="",main="Posterior probability of positive selection",...)
+}
+
+### histogram of a certain parameter
+histogram.omegaMap <- function(...) hist.omegaMap(...)
+hist.omegaMap <- function(runs,param,...,col="grey",freq=F,xlab=NULL,ylab=NULL,main=NULL) {
+  nruns <- length(runs)
+  mergd <- runs[[1]]
+  if(nruns>1) for(i in 2:nruns) mergd <- rbind(mergd,runs[[i]])
+  if(is.null(xlab)) xlab=eval(substitute(expression(sym),list(sym=as.symbol(param))))
+  if(is.null(ylab)) ylab="Posterior probability density"
+  if(is.null(main)) main=""
+  hist(mergd[[param]],...,col=col,freq=freq,xlab=xlab,ylab=ylab,main=main)
+}
+
+### hpd for a certain parameter
+hpd.omegaMap <- function(runs,param,log=TRUE,alpha=0.05) {
+  nruns <- length(runs)
+  mergd <- runs[[1]]
+  if(nruns>1) for(i in 2:nruns) mergd <- rbind(mergd,runs[[i]])
+  if(log==TRUE) exp(boa.hpd(log(mergd[[param]]),alpha=alpha))
+  else boa.hpd(mergd[[param]],alpha=alpha)
+}
+
+### point estimate for a certain parameter
+point.estimate <- function(runs,param,log=TRUE) {
+  nruns <- length(runs)
+  mergd <- runs[[1]]
+  if(nruns>1) for(i in 2:nruns) mergd <- rbind(mergd,runs[[i]])
+  if(log==TRUE) exp(mean(log(mergd[[param]])))
+  else mean(mergd[[param]])
+}
+
+### With apologies to Kate Cowles, Nicky Best, Karen Vines and
+### Martyn Plummer, the authors of effectiveS() which appears in
+### the package coda (visit www.r-project.org).
+effectiveS <- function(x) {
+  x <- as.matrix(x)
+  v0 <- order <- numeric(ncol(x))
+  names(v0) <- names(order) <- colnames(x)
+  z <- 1:nrow(x)
+  for (i in 1:ncol(x)) {
+      lm.out <- lm(x[, i] ~ z)
+      if (identical(all.equal(var(residuals(lm.out)), 0), TRUE)) {
+          v0[i] <- 0
+          order[i] <- 0
+      }
+      else {
+          ar.out <- ar(x[, i], aic = TRUE)
+          v0[i] <- ar.out$var.pred/(1 - sum(ar.out$ar))^2
+          order[i] <- ar.out$order
+      }
+  }
+  spec <- v0
+  ans <- ifelse(spec == 0, 0, nrow(x) * apply(x, 2, var)/spec)
+  return(ans)
+}
+
+### effective sample size (ess) for a certain parameter
+### If the ess is less than 100 that is very worrying
+ess <- function(...) effective.sample.size(...)
+effective.sample.size <- function(runs,param) {
+  nruns <- length(runs)
+  res <- 0
+  for(i in 1:nruns) res <- res + effectiveS(runs[[i]][[param]])
+  return(res)
+}
+
+### must use syntax plot.omega(list(a,b)) for correct usage
+fireplot.omega <- function(runs,log="y",ylim=NULL,yres=100,colfunc=function(x){x},cols=heat.colors(100)) {
+  if(log!="" & log!="y") stop("log can only take values \"\" and \"y\"")
+  nruns <- length(runs)
+  for(i in 1:nruns) {
+    if(i==1) {
+      oBeg <- which(names(runs[[i]])=="omega0")
+      oEnd <- which(names(runs[[i]])=="rBlockStart0")-1
+    }
+    else {
+      if(which(names(runs[[i]])=="omega0")!=oBeg) error("Runs don't match in sequence length")
+      if(which(names(runs[[i]])=="rBlockStart0")!=(oEnd+1)) error("Runs don't match in sequence length")
+    }
+  }
+  len <- oEnd-oBeg+1
+  mergd <- runs[[1]][,oBeg:oEnd]
+  if(nruns>1) for(i in 2:nruns) mergd <- rbind(mergd,runs[[i]][,oBeg:oEnd])
+
+  if(is.null(ylim)) {
+    if(log=="") ylim <- c(0,max(mergd))
+    else ylim <- c(min(mergd),max(mergd))
+  }
+  if(log=="y") ylim <- log(ylim)
+
+  skyHist <- NULL
+  for(i in 1:len) {
+    if(log=="") H <- hist(mergd[,i],breaks=seq(ylim[1],ylim[2],length=yres),freq=F,plot=F)
+    else H <- hist(log(mergd[,i]),breaks=seq(ylim[1],ylim[2],length=yres),freq=F,plot=F)
+    skyHist <- rbind(skyHist,H$intensities);
+  }
+
+  image(1:len,seq(ylim[1],ylim[2],length=yres),colfunc(skyHist),col=cols,ann=F,cex.axis=0.8)
+  if(log=="") title(xlab="Codon position",ylab=expression(omega))
+  else title(xlab="Codon position",ylab=expression(log(omega)))
+}
+
+### must use syntax plot.omega(list(a,b)) for correct usage
+fireplot.rho <- function(runs,log="y",ylim=NULL,yres=100,colfunc=function(x){x},cols=heat.colors(100)) {
+  if(log!="" & log!="y") stop("log can only take values \"\" and \"y\"")
+  nruns <- length(runs)
+  for(i in 1:nruns) {
+    if(i==1) {
+      oBeg <- which(names(runs[[i]])=="rho0")
+      oEnd <- ncol(runs[[i]])
+    }
+    else {
+      if(which(names(runs[[i]])=="rho0")!=oBeg) error("Runs don't match in sequence length")
+      if(ncol(runs[[i]])!=oEnd) error("Runs don't match in sequence length")
+    }
+  }
+  len <- oEnd-oBeg+1
+  mergd <- runs[[1]][,oBeg:oEnd]
+  if(nruns>1) for(i in 2:nruns) mergd <- rbind(mergd,runs[[i]][,oBeg:oEnd])
+
+  if(is.null(ylim)) {
+    if(log=="") ylim <- c(0,max(mergd))
+    else ylim <- c(min(mergd),max(mergd))
+  }
+  if(log=="y") ylim <- log(ylim)
+
+  skyHist <- NULL
+  for(i in 1:len) {
+    if(log=="") H <- hist(mergd[,i],breaks=seq(ylim[1],ylim[2],length=yres),freq=F,plot=F)
+    else H <- hist(log(mergd[,i]),breaks=seq(ylim[1],ylim[2],length=yres),freq=F,plot=F)
+    skyHist <- rbind(skyHist,H$intensities);
+  }
+
+  image(1:len,seq(ylim[1],ylim[2],length=yres),colfunc(skyHist),col=cols,ann=F,cex.axis=0.8)
+  if(log=="") title(xlab="Codon position",ylab=expression(rho))
+  else title(xlab="Codon position",ylab=expression(log(rho)))
+}
